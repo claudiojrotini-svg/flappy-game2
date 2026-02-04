@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Flappy Amigo</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #70c5ce; /* Cor do céu */
+            font-family: sans-serif;
+            touch-action: none; /* Impede zoom e scroll no celular */
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Esconde as imagens originais */
+        #recursos {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="recursos">
+        
+        <img id="img-amigo1" src="amigo1.png" alt="Amigo 1">
+
+        <img id="img-amigo2" src="amigo2.png" alt="Amigo 2">
+
+        <img id="img-cano" src="cano.png" alt="Cano">
+    </div>
+
+    <canvas id="jogoCanvas"></canvas>
+
+    <script>
+        // ==========================================
+        // CONFIGURAÇÕES
+        // ==========================================
+        const GRAVIDADE = 0.25;
+        const PULO = -6.5;
+        const VELOCIDADE_JOGO = 3.5;
+        const ABERTURA_CANO = 250; // Tamanho do buraco
+        const DISTANCIA_ENTRE_CANOS = 350; 
+
+        // Configuração visual
+        const TAMANHO_BIRD = 50; // Largura e Altura do personagem
+
+        // ==========================================
+        // LÓGICA DO JOGO
+        // ==========================================
+        
+        const canvas = document.getElementById('jogoCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const imgAmigo1 = document.getElementById('img-amigo1');
+        const imgAmigo2 = document.getElementById('img-amigo2');
+        const imgCano = document.getElementById('img-cano');
+
+        let largura, altura;
+        let frames = 0;
+        let pontuacao = 0;
+        let estado = 'INICIO'; // INICIO, JOGANDO, GAMEOVER
+
+        const amigo = {
+            x: 50,
+            y: 150,
+            velocidade: 0,
+            
+            atualiza: function() {
+                this.velocidade += GRAVIDADE;
+                this.y += this.velocidade;
+
+                // Teto
+                if(this.y < 0) {
+                    this.y = 0;
+                    this.velocidade = 0;
+                }
+
+                // Chão (Colisão)
+                if(this.y + TAMANHO_BIRD >= altura) {
+                    this.y = altura - TAMANHO_BIRD;
+                    mudarEstado('GAMEOVER');
+                }
+            },
+
+            pula: function() {
+                this.velocidade = PULO;
+            },
+
+            desenha: function() {
+                ctx.drawImage(imgAmigo1, this.x, this.y, TAMANHO_BIRD, TAMANHO_BIRD);
+            },
+
+            reseta: function() {
+                this.y = 150;
+                this.velocidade = 0;
+            }
+        };
+
+        const canos = {
+            lista: [],
+
+            insere: function() {
+                const margem = 50; 
+                const maximoY = altura - ABERTURA_CANO - margem;
+                const yRandom = margem + Math.floor(Math.random() * (maximoY - margem));
+
+                this.lista.push({
+                    x: largura,
+                    y: yRandom,
+                    largura: 60,
+                    marcouPonto: false
+                });
+            },
+
+            atualiza: function() {
+                const frequencia = Math.floor(DISTANCIA_ENTRE_CANOS / VELOCIDADE_JOGO);
+                if (frames % frequencia === 0) {
+                    this.insere();
+                }
+
+                for (let i = 0; i < this.lista.length; i++) {
+                    const cano = this.lista[i];
+                    cano.x -= VELOCIDADE_JOGO;
+
+                    // ===============================================
+                    // SISTEMA DE COLISÃO (AGORA MAIS RIGOROSO)
+                    // ===============================================
+                    
+                    // 1. Verifica se o passaro está na mesma faixa horizontal do cano
+                    const birdEsquerda = amigo.x;
+                    const birdDireita = amigo.x + TAMANHO_BIRD;
+                    const canoEsquerda = cano.x;
+                    const canoDireita = cano.x + cano.largura;
+
+                    if (birdDireita > canoEsquerda && birdEsquerda < canoDireita) {
+                        
+                        // 2. Verifica se tocou no cano de CIMA ou no de BAIXO
+                        const birdTopo = amigo.y;
+                        const birdBase = amigo.y + TAMANHO_BIRD;
+
+                        const canoCimaBase = cano.y;
+                        const canoBaixoTopo = cano.y + ABERTURA_CANO;
+
+                        // Se o topo do pássaro bater no cano de cima OU a base do pássaro bater no cano de baixo
+                        // Reduzi 5 pixels de "folga" apenas visual para não parecer injusto, mas é colisão sólida
+                        if (birdTopo + 5 < canoCimaBase || birdBase - 5 > canoBaixoTopo) {
+                            mudarEstado('GAMEOVER');
+                        }
+                    }
+
+                    // Pontuação
+                    if (cano.x + cano.largura < amigo.x && !cano.marcouPonto) {
+                        pontuacao++;
+                        cano.marcouPonto = true;
+                    }
+
+                    // Remove canos antigos
+                    if (cano.x + cano.largura <= -100) {
+                        this.lista.shift();
+                        i--;
+                    }
+                }
+            },
+
+            desenha: function() {
+                for (let i = 0; i < this.lista.length; i++) {
+                    const cano = this.lista[i];
+                    
+                    // Cano de Cima
+                    ctx.drawImage(imgCano, cano.x, 0, cano.largura, cano.y);
+                    // Cano de Baixo
+                    const yCanoBaixo = cano.y + ABERTURA_CANO;
+                    ctx.drawImage(imgCano, cano.x, yCanoBaixo, cano.largura, altura - yCanoBaixo);
+                }
+            },
+
+            reseta: function() {
+                this.lista = [];
+            }
+        };
+
+        function mudarEstado(novoEstado) {
+            estado = novoEstado;
+        }
+
+        function redimensionaTela() {
+            largura = window.innerWidth;
+            altura = window.innerHeight;
+            canvas.width = largura;
+            canvas.height = altura;
+        }
+
+        function inputUsuario() {
+            if (estado === 'JOGANDO') {
+                amigo.pula();
+            } else if (estado === 'INICIO' || estado === 'GAMEOVER') {
+                // Reinicia
+                estado = 'JOGANDO';
+                canos.reseta();
+                amigo.reseta();
+                pontuacao = 0;
+                frames = 0;
+            }
+        }
+
+        function desenha() {
+            // Fundo Azul
+            ctx.fillStyle = "#70c5ce";
+            ctx.fillRect(0, 0, largura, altura);
+
+            // Desenha jogo normal
+            canos.desenha();
+            amigo.desenha();
+
+            // Placar durante o jogo
+            if (estado === 'JOGANDO') {
+                ctx.fillStyle = "#FFF";
+                ctx.strokeStyle = "#000";
+                ctx.lineWidth = 2;
+                ctx.font = "bold 50px Arial";
+                ctx.fillText(pontuacao, largura / 2 - 15, 80);
+                ctx.strokeText(pontuacao, largura / 2 - 15, 80);
+            }
+
+            // Tela Inicial
+            if (estado === 'INICIO') {
+                ctx.fillStyle = "rgba(0,0,0,0.5)";
+                ctx.fillRect(0, 0, largura, altura);
+                ctx.fillStyle = "#FFF";
+                ctx.textAlign = "center";
+                ctx.font = "30px Arial";
+                ctx.fillText("Toque para Jogar", largura / 2, altura / 2);
+            }
+
+            // TELA DE GAME OVER (Só a imagem gigante)
+            if (estado === 'GAMEOVER') {
+                // Fundo Preto para destacar a imagem
+                ctx.fillStyle = "#000";
+                ctx.fillRect(0, 0, largura, altura);
+
+                // Calcula tamanho máximo mantendo a imagem visível
+                // Queremos a imagem grande, ocupando uns 80-90% da largura ou altura
+                let tamanho = Math.min(largura, altura) * 0.9;
+                
+                let imgX = (largura - tamanho) / 2;
+                let imgY = (altura - tamanho) / 2;
+
+                // Desenha APENAS a imagem do Amigo 2
+                ctx.drawImage(imgAmigo2, imgX, imgY, tamanho, tamanho);
+            }
+        }
+
+        function loop() {
+            if (estado === 'JOGANDO') {
+                amigo.atualiza();
+                canos.atualiza();
+                frames++;
+            }
+            desenha();
+            requestAnimationFrame(loop);
+        }
+
+        // Eventos
+        window.addEventListener('resize', redimensionaTela);
+        window.addEventListener('mousedown', inputUsuario);
+        window.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            inputUsuario();
+        }, {passive: false});
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                inputUsuario();
+            }
+        });
+
+        // Start
+        redimensionaTela();
+        loop();
+
+    </script>
+</body>
+</html>
